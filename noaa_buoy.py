@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 import os
 import random
 import requests
@@ -8,6 +9,7 @@ import time
 import click
 from influxdb import InfluxDBClient
 from loguru import logger
+import pandas as pd
 
 # https://www.ndbc.noaa.gov/station_page.php?station=46304
 # "location": "Allens Sideroad, Sault Ste. Marie, Algoma, Ontario, P6C 5P7, Canada"
@@ -16,10 +18,11 @@ from loguru import logger
 # curl 'https://nominatim.openstreetmap.org/reverse?lat=46.59215&lon=-84.402466&format=json' | jq .
 #
 # Also: think about a class for this
-ENGLISH_BAY_URL = "https://www.ndbc.noaa.gov/station_page.php?station=46304"
-LOCATION = "English Bay"
+ENGLISH_BAY_URL = "https://www.ndbc.noaa.gov/data/realtime2/46304.txt"
+STATION = "English Bay"
 STATION_ID = 46304
 
+DEFAULT_BATCH_SIZE = 1000
 
 # my name, api name
 MEASUREMENTS = {"pm10": "pm10", "pm25": "pm25", "temp": "t", "humidity": "h"}
@@ -39,27 +42,34 @@ class NOAABuoy:
         # TODO: Don't hardcode this
         return ENGLISH_BAY_URL
 
-    def build_current_influxdb_data(self, data: dict):
+    def build_influxdb_data(self, df: pd.DataFrame):
         """
         Build current conditions influx data
         """
         influx_data = []
-        station = data["data"]["city"]["name"]
-        for my_name, their_name in MEASUREMENTS.items():
-            # Coerce to a float in case it comes back as an int
-            val = float(data["data"]["iaqi"][their_name]["v"])
-            # They appear to record time in epoch seconds.  That works for
-            # me; the call in write_influx_data specifies "seconds" as the
-            # precision.
-            tstamp = data["data"]["time"]["v"]
+        # FIXME: Don't hard code this
+        location = STATION
+        for row in df.iterrows():
+            logger.debug(row)
+            logger.debug(row[0])
+            logger.debug(row[1])
+            d = int(row[0].timestamp()) # epoch seconds
+            fields = {}
+            # FIXME: there's a better way to do this
+            i = 0
+            for col in df.columns:
+                fields[col] = row[1][i]
+                i += 1
+
             measurement = {
-                "measurement": "noaa_buoy",
-                "fields": {my_name: val},
-                "tags": {"location": LOCATION, "station": station},
-                "time": tstamp,
+                "measurement": "noaa_buoy_data",
+                "tags": {"station_location": location},
+                "fields": fields,
+                "time": d,
             }
             influx_data.append(measurement)
 
+        logger.debug(influx_data)
         return influx_data
 
     def fetch_current_data(self):
@@ -67,7 +77,8 @@ class NOAABuoy:
         Fetch current data
         """
         url = self.feed_url()
-        data = requests.get(url).text
+        data = requests.get(url).text.split("\n")
+        logger.debug(data)
         data = self.munge_data(data)
         return data
 
@@ -76,7 +87,9 @@ class NOAABuoy:
         Munge data
         """
         cols = []
+        logger.debug(data)
         for line in data:
+            logger.debug(line)
             if line.startswith("#"):
                 if cols == []:
                     # First time through
@@ -87,6 +100,9 @@ class NOAABuoy:
                 else:
                     continue
             fields = line.split()
+            if len(fields) < len(cols[5:]):
+                logger.debug(f"Skipping {line=}, looks short")
+                continue
             d = pd.to_datetime(
                 f"{fields[0]} {fields[1]} {fields[2]} {fields[3]} {fields[4]}",
                 format="%Y %m %d %H %M",
@@ -148,32 +164,6 @@ def build_current_influxdb_data(data: dict):
     return influx_data
 
 
-def build_forecast_influxdb_data(data: dict):
-    """
-    Build influxdb data and return it
-    """
-    # logger = logging.getLogger(__name__)
-    # logger.info("Building influxdb data...")
-
-    influx_data = []
-    location = data["Location"]["City"]
-    forecast_date = data["ForecastDate"]
-    for period in data["Location"]["periods"]:
-        if period["Type"] != "Today":
-            continue
-
-        print(period)
-        measurement = {
-            "measurement": "noaa_buoy_index",
-            "fields": {"noaa_buoy_index": period["Index"]},
-            "tags": {"station_location": location},
-            "time": forecast_date,
-        }
-        influx_data.append(measurement)
-
-    return influx_data
-
-
 def write_influx_data(influx_data, influx_client):
     """
     Write influx_data to database
@@ -204,7 +194,7 @@ def build_influxdb_client():
     influx_pass = os.getenv(
         "INFLUX_PASS", "You forgot to set INFLUX_PASS in .secret.sh!"
     )
-
+    logger.debug(f"{port}")
     influx_client = InfluxDBClient(
         host=host,
         port=port,
@@ -219,23 +209,11 @@ def build_influxdb_client():
     return influx_client
 
 
-def fetch_forecast_data(session, url=SSM_URL):
-    """
-    Fetch forecast data
-    """
-    # TODO: Dedupe this code
-    url = f"{url}/?token={os.getenv('NOAA_BUOY_TOKEN')}"
-    print(url)
-    data = session.get(url).json()
-    return data
-
-
-def fetch_current_data(session, url=SSM_URL):
+def fetch_current_data(session, url):
     """
     Fetch current data
     """
     # TODO: Dedupe this code
-    url = f"{url}/?token={os.getenv('NOAA_BUOY_TOKEN')}"
     print(url)
     data = session.get(url).json()
     return data
@@ -259,13 +237,14 @@ def current(random_sleep, dry_run):
     if bool(random_sleep) and dry_run is False:
         time.sleep(random.randrange(0, random_sleep))
     logger.debug("Here we go, fetching data")
-    data = fetch_current_data(session)
+    buoy = NOAABuoy()
+    data = buoy.fetch_current_data()
     if dry_run is True:
         logger.debug("Raw data:")
-        logger.debug(data))
+        logger.debug(data)
         logger.debug("=-=-=-=-=-=-=-=-")
 
-    influxdb_data = build_current_influxdb_data(data)
+    influxdb_data = buoy.build_influxdb_data(data)
     if dry_run is True:
         logger.debug("InfluxDB data:")
         logger.debug(json.dumps(influxdb_data, indent=2))
