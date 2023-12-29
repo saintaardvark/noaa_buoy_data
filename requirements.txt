@@ -1,0 +1,7 @@
+# external requirements
+click
+python-dotenv>=0.5.1
+influxdb
+requests
+loguru
+pandas
