@@ -52,6 +52,10 @@ class NOAABuoy:
             # FIXME: there's a better way to do this
             i = 0
             for col in df.columns:
+                if pd.isna(row[1][i]):
+                    logger.debug(f"Skipping {col} since it looks like NaN")
+                    continue
+
                 fields[col] = row[1][i]
                 i += 1
 
