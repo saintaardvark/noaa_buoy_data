@@ -36,7 +36,7 @@ class NOAABuoy:
         # TODO: Don't hardcode this
         return ENGLISH_BAY_URL
 
-    def build_influxdb_data(self, df: pd.DataFrame):
+    def build_influxdb_data(self, df: pd.DataFrame, latest_only: bool = False):
         """
         Build current conditions influx data
         """
@@ -62,6 +62,10 @@ class NOAABuoy:
                 "time": d,
             }
             influx_data.append(measurement)
+            # FIXME: Assumption is that the latest value is the first value
+            if latest_only is True:
+                logger.debug("Only sending the latest value")
+                break
 
         logger.debug(influx_data)
         return influx_data
@@ -215,6 +219,11 @@ def fetch_current_data(session, url):
 
 @click.command("current", short_help="Fetch current data")
 @click.option(
+    "--latest-only/--no-latest-only",
+    default=False,
+    help="Just push the latest value to InfluxDB",
+)
+@click.option(
     "--random-sleep",
     default=300,
     help="Sleep for random number of seconds, up to default.  Set to 0 to disable.",
@@ -224,7 +233,7 @@ def fetch_current_data(session, url):
     default=False,
     help="Don't push to Influxdb, just dump data",
 )
-def current(random_sleep, dry_run):
+def current(latest_only, random_sleep, dry_run):
     """
     Fetch current data
     """
@@ -238,7 +247,7 @@ def current(random_sleep, dry_run):
         logger.debug(data)
         logger.debug("=-=-=-=-=-=-=-=-")
 
-    influxdb_data = buoy.build_influxdb_data(data)
+    influxdb_data = buoy.build_influxdb_data(data, latest_only=latest_only)
     if dry_run is True:
         logger.debug("InfluxDB data:")
         logger.debug(json.dumps(influxdb_data, indent=2))
