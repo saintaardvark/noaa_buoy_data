@@ -12,12 +12,6 @@ from loguru import logger
 import pandas as pd
 
 # https://www.ndbc.noaa.gov/station_page.php?station=46304
-# "location": "Allens Sideroad, Sault Ste. Marie, Algoma, Ontario, P6C 5P7, Canada"
-#
-# At some point, may want to switch to using nominatim:
-# curl 'https://nominatim.openstreetmap.org/reverse?lat=46.59215&lon=-84.402466&format=json' | jq .
-#
-# Also: think about a class for this
 ENGLISH_BAY_URL = "https://www.ndbc.noaa.gov/data/realtime2/46304.txt"
 STATION = "English Bay"
 STATION_ID = 46304
