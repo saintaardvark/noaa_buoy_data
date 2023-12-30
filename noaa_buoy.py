@@ -137,44 +137,6 @@ def noaa_buoy():
     """
 
 
-def build_current_influxdb_data(data: dict):
-    """
-    Build current conditions influx data
-    """
-    influx_data = []
-    station = STATION
-    for my_name, their_name in MEASUREMENTS.items():
-        # Coerce to a float in case it comes back as an int
-        val = float(data["data"]["iaqi"][their_name]["v"])
-        # They appear to record time in epoch seconds.  That works for
-        # me; the call in write_influx_data specifies "seconds" as the
-        # precision.
-        tstamp = data["data"]["time"]["v"]
-        measurement = {
-            "measurement": "noaa_buoy",
-            "fields": {my_name: val},
-            "tags": {"location": LOCATION, "station": STATION},
-            "time": tstamp,
-        }
-        influx_data.append(measurement)
-
-    logger.info("Made it here")
-    return influx_data
-
-
-def write_influx_data(influx_data, influx_client):
-    """
-    Write influx_data to database
-    """
-    # logger = logging.getLogger(__name__)
-    logger.info("Writing data to influxdb...")
-    logger.debug("Number of data points: {}".format(len(influx_data)))
-    print(
-        influx_client.write_points(
-            influx_data, time_precision="s", batch_size=DEFAULT_BATCH_SIZE
-        )
-    )
-
 
 def build_influxdb_client():
     """
@@ -255,7 +217,7 @@ def current(latest_only, random_sleep, dry_run):
         return
 
     influx_clientdb = build_influxdb_client()
-    write_influx_data(influxdb_data, influx_clientdb)
+    buoy.write_influx_data(influxdb_data, influx_clientdb)
 
 
 noaa_buoy.add_command(current)
