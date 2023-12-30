@@ -13,7 +13,7 @@ import pandas as pd
 
 # https://www.ndbc.noaa.gov/station_page.php?station=46304
 ENGLISH_BAY_URL = "https://www.ndbc.noaa.gov/data/realtime2/46304.txt"
-STATION = "English Bay"
+STATION = "EnglishBay"
 STATION_ID = 46304
 
 DEFAULT_BATCH_SIZE = 1000
