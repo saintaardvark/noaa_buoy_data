@@ -50,33 +50,26 @@ class NOAABuoy:
         """
         Build current conditions influx data
         """
-        influx_data = []
         # FIXME: Don't hard code this
         location = STATION
-        for row in df.iterrows():
-            d = int(row[0].timestamp())  # epoch seconds
-            fields = {}
-            # FIXME: there's a better way to do this
-            i = 0
-            for col in df.columns:
-                if pd.isna(row[1][i]):
-                    logger.debug(f"Skipping {col} since it looks like NaN")
-                    continue
 
-                fields[col] = row[1][i]
-                i += 1
-
+        def process_row(row):
+            d = int(row.name.timestamp())  # epoch seconds
+            fields = {col: val for col, val in row.items() if pd.notnull(val)}
             measurement = {
                 "measurement": "noaa_buoy_data",
                 "tags": {"station_location": location},
                 "fields": fields,
                 "time": d,
             }
-            influx_data.append(measurement)
-            # FIXME: Assumption is that the latest value is the first value
-            if latest_only is True:
-                logger.debug("Only sending the latest value")
-                break
+            return measurement
+
+        influx_data = df.apply(process_row, axis=1).tolist()
+
+        # FIXME: Assumption is that the latest value is the first value
+        if latest_only:
+            influx_data = influx_data[:1]
+            logger.debug("Only sending the latest value")
 
         return influx_data
 
