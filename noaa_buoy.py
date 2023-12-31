@@ -8,6 +8,16 @@ import time
 
 import click
 from influxdb import InfluxDBClient
+
+# Reminder: to set the loglevel to INFO, you can either:
+# - set env var LOGURU_LEVEL to INFO
+# - or add this to the code:
+#
+# logger.remove()
+# logger.add(sys.stderr, level="INFO")
+#
+# For more details, see:
+# https://github.com/Delgan/loguru/issues/138
 from loguru import logger
 import pandas as pd
 
@@ -44,10 +54,7 @@ class NOAABuoy:
         # FIXME: Don't hard code this
         location = STATION
         for row in df.iterrows():
-            logger.debug(row)
-            logger.debug(row[0])
-            logger.debug(row[1])
-            d = int(row[0].timestamp()) # epoch seconds
+            d = int(row[0].timestamp())  # epoch seconds
             fields = {}
             # FIXME: there's a better way to do this
             i = 0
@@ -71,7 +78,6 @@ class NOAABuoy:
                 logger.debug("Only sending the latest value")
                 break
 
-        logger.debug(influx_data)
         return influx_data
 
     def fetch_current_data(self):
@@ -89,7 +95,6 @@ class NOAABuoy:
         Munge data
         """
         cols = []
-        logger.debug(data)
         for line in data:
             logger.debug(line)
             if line.startswith("#"):
@@ -141,7 +146,6 @@ def noaa_buoy():
     """
 
 
-
 def build_influxdb_client():
     """
     Build and return InfluxDB client
@@ -171,16 +175,6 @@ def build_influxdb_client():
     # logger.info("Connected to InfluxDB version {}".format(influx_client.ping()))
     print("Connected to InfluxDB version {}".format(influx_client.ping()))
     return influx_client
-
-
-def fetch_current_data(session, url):
-    """
-    Fetch current data
-    """
-    # TODO: Dedupe this code
-    print(url)
-    data = session.get(url).json()
-    return data
 
 
 @click.command("current", short_help="Fetch current data")
